@@ -108,3 +108,8 @@ class StepUpdate(Strict):
 
 class ProposalDecision(Strict):
     note: str | None = Field(default=None, max_length=1000)
+
+
+class BulkRefreshRequest(Strict):
+    hcads: list[str] = Field(min_length=1, max_length=10000)
+

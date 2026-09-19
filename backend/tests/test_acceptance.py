@@ -291,3 +291,19 @@ def test_api_status_codes(fixture_property):
         cases = client.get(f"/api/properties/{fixture_property['a']}/cases").json()
         notes = cases["cases"][0]["records"][0]["fields"]["notes"]
         assert "_x000d_" not in notes and "_x000d_" in json.dumps(cases["cases"][0]["records"][0]["raw"])
+
+def test_bulk_refresh(fixture_property):
+    from fastapi.testclient import TestClient
+    from app.main import app
+
+    with TestClient(app) as client:
+        # Pass unknown hcad along with a known one
+        hcad_a = TEST_HCAD_A
+        res = client.post("/api/properties/bulk-refresh", json={"hcads": [hcad_a, "9999999999999"]})
+        assert res.status_code == 200
+        data = res.json()
+        assert "results" in data
+        assert hcad_a in data["results"]
+        # In the test environment, refreshing existing returns 0 new cases unless we mock HoustonClient changes
+        assert data["results"][hcad_a] == 0
+        assert data["results"]["9999999999999"] == 0

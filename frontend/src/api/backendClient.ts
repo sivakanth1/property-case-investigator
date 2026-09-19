@@ -314,6 +314,8 @@ export const api = {
   cases: (id: number) => request<CasesResponse>(`/api/properties/${id}/cases`),
   refresh: (id: number) =>
     post<{ status: string; message: string; property: PropertySummary }>(`/api/properties/${id}/refresh`),
+  bulkRefresh: (hcads: string[]) =>
+    post<{ results: Record<string, number> }>('/api/properties/bulk-refresh', { hcads }),
   candidates: (query: string) => request<CandidatesResponse>(`/api/source/candidates${q({ query })}`),
   importProperty: (hcad: string) => post<PropertySummary>('/api/properties/import', { hcad }),
   evidence: (ids: number[]) => request<SourceRecord[]>(`/api/evidence${q({ ids: ids.join(',') })}`),

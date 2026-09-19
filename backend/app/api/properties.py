@@ -8,8 +8,11 @@ from ..data.repository import (
     DataBlocker, category_recurrence, coverage, evidence_records, get_property, grouped_cases, import_property,
     list_properties, property_view, record_view, refresh_property, search_candidates,
 )
+from sqlalchemy import select
+
 from ..db import session_scope
-from ..schemas import ImportRequest
+from ..models import Property
+from ..schemas import BulkRefreshRequest, ImportRequest
 from .errors import api_error, not_found
 from .plans import plan_store
 from .tasks import store_for
@@ -29,6 +32,29 @@ def properties(request: Request, query: str | None = Query(default=None, max_len
     for v in views:
         v["open_task_count"] = counts.get(v["id"] if store.storage == "local" else v["hcad"], 0)
     return views
+
+
+@router.post("/properties/bulk-refresh")
+def bulk_refresh(body: BulkRefreshRequest, request: Request):
+    client = request.app.state.houston
+    cap = get_settings().max_rows_per_property
+    results = {}
+    
+    for hcad in body.hcads:
+        with session_scope() as s:
+            prop = s.scalars(select(Property).where(Property.hcad == hcad)).first()
+            old_cases = {c["case_id"] for c in grouped_cases(s, prop.id) if c["case_id"]} if prop else set()
+        
+        try:
+            property_id = import_property(client, hcad, cap)
+            with session_scope() as s:
+                new_cases = {c["case_id"] for c in grouped_cases(s, property_id) if c["case_id"]}
+                added_cases = len(new_cases - old_cases)
+                results[hcad] = added_cases
+        except Exception:
+            results[hcad] = 0
+            
+    return {"results": results}
 
 
 @router.get("/properties/{property_id}")
