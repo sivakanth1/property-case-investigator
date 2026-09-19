@@ -35,9 +35,19 @@ def bearer(token):
 
 def test_passwords_are_salted_one_way_hashes():
     h1, h2 = hash_password("s3cret-pass"), hash_password("s3cret-pass")
-    assert h1 != h2 and h1.startswith("scrypt$") and "s3cret-pass" not in h1
+    assert h1 != h2 and h1.startswith("pbkdf2$") and "s3cret-pass" not in h1  # salted: same password, different hash
     assert verify_password("s3cret-pass", h1) and not verify_password("s3cret-pasS", h1)
     assert not verify_password("anything", "not-a-hash") and not verify_password("anything", None)
+
+
+def test_accounts_created_with_the_older_scrypt_hashes_can_still_sign_in():
+    import base64
+    import hashlib
+
+    salt, password = b"0123456789abcdef", "legacy-pass"
+    digest = hashlib.scrypt(password.encode(), salt=salt, n=2**14, r=8, p=1, dklen=64)
+    legacy = f"scrypt$16384$8$1${base64.b64encode(salt).decode()}${base64.b64encode(digest).decode()}"
+    assert verify_password(password, legacy) and not verify_password("wrong", legacy)
 
 
 def test_signup_signin_me_and_signout(client):
@@ -47,7 +57,7 @@ def test_signup_signin_me_and_signout(client):
     assert body["user"] == {"id": "user-1", "email": "owner@example.com", "full_name": "Pat Owner", "company": "Acme"}
     assert "password" not in json.dumps(body)
     stored = client.fake.profiles["user-1"]["password_hash"]
-    assert stored.startswith("scrypt$") and "correct horse 1" not in stored
+    assert stored.startswith("pbkdf2$") and "correct horse 1" not in stored
 
     assert client.get("/api/auth/me", headers=bearer(body["token"])).json()["email"] == "owner@example.com"
     wrong = client.post("/api/auth/signin", json={"email": "owner@example.com", "password": "nope"})

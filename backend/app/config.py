@@ -18,6 +18,10 @@ ACTION_TYPES = ("verify_current_condition", "review_case_history", "reconcile_re
 PRIORITIES = ("low", "medium", "high")
 TASK_STATUSES = ("open", "in_progress", "verified", "dismissed")
 FINDING_TYPES = ("case_history", "recurrence", "source_status", "data_quality", "coverage_gap")
+# On Render the frontend is served from a sibling *.onrender.com host, so allow those by default there.
+# Set CORS_ORIGINS (or CORS_ORIGIN_REGEX) to pin it to your own frontend URL.
+ON_RENDER_ORIGINS = r"https://[a-z0-9-]+\.onrender\.com"
+
 FEATHERLESS_BASE_URL = "https://api.featherless.ai/v1"
 # Verified 2026-09-19: Qwen3-32B returns native tool calls on Featherless (Qwen3-30B-A3B-Instruct-2507 returns HTTP 500
 # whenever tools are sent).
@@ -40,6 +44,7 @@ class Settings:
     llm_model: str | None
     llm_tool_mode: str
     cors_origins: tuple[str, ...]
+    cors_origin_regex: str | None
     snapshot_path: Path
     max_rows_per_property: int
     live_refresh_minutes: int
@@ -69,7 +74,8 @@ def get_settings() -> Settings:
         llm_base_url=_env("FEATHERLESS_BASE_URL") or FEATHERLESS_BASE_URL,
         llm_model=_env("FEATHERLESS_MODEL") or DEFAULT_FEATHERLESS_MODEL,
         llm_tool_mode=(_env("LLM_TOOL_MODE") or "auto").lower(),
-        cors_origins=tuple(o.strip() for o in origins.split(",") if o.strip()),
+        cors_origins=tuple(o.strip().rstrip("/") for o in origins.split(",") if o.strip()),
+        cors_origin_regex=_env("CORS_ORIGIN_REGEX") or (ON_RENDER_ORIGINS if _env("RENDER") else None),
         snapshot_path=Path(_env("SNAPSHOT_PATH") or PROJECT_DIR / "sample_data" / "houston_snapshot.json"),
         max_rows_per_property=int(_env("MAX_ROWS_PER_PROPERTY") or 1000),
         live_refresh_minutes=int(_env("LIVE_REFRESH_MINUTES") or 30),

@@ -46,7 +46,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   try {
     res = await fetch(`${API_BASE}${path}`, { ...init, headers });
   } catch {
-    throw new ApiError(0, 'network', 'Cannot reach the backend. Start it with start.ps1 (port 8000).');
+    throw new ApiError(0, 'network', API_BASE
+      ? `Cannot reach the API at ${API_BASE}. If it was idle it may be starting up — wait a moment and retry.`
+      : 'Cannot reach the backend. Start it with start.ps1 (port 8000).');
   }
   const body = await res.json().catch(() => null);
   if (!res.ok) {

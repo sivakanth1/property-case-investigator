@@ -46,7 +46,7 @@ def env(tmp_path, monkeypatch):
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{(tmp_path / 'test.db').as_posix()}")
     monkeypatch.setenv("SNAPSHOT_PATH", str(tmp_path / "no_snapshot.json"))
     for key in ("FEATHERLESS_API_KEY", "FEATHERLESS_MODEL", "FEATHERLESS_BASE_URL", "LLM_TOOL_MODE",
-                "SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY"):
+                "SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "CORS_ORIGINS", "CORS_ORIGIN_REGEX", "RENDER"):
         monkeypatch.delenv(key, raising=False)
     from app.db import dispose_engine, init_engine
 

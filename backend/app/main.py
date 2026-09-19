@@ -50,9 +50,11 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Property Case Investigator API", version="0.2.0", lifespan=lifespan)
+_settings = get_settings()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=list(get_settings().cors_origins),
+    allow_origins=list(_settings.cors_origins),
+    allow_origin_regex=_settings.cors_origin_regex,
     allow_credentials=False,
     allow_methods=["GET", "POST", "PATCH", "DELETE"],
     allow_headers=["Content-Type", "Authorization"],
