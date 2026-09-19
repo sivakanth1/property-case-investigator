@@ -13,7 +13,7 @@ interface Props {
 export function CasePlanPanel({ propertyId, caseItem, aiMode }: Props) {
   const [plan, setPlan] = useState<CasePlan | null>(caseItem.plan);
   const [busy, setBusy] = useState(false);
-  const [savingStep, setSavingStep] = useState<number | null>(null);
+  const [savingStep, setSavingStep] = useState<string | null>(null);
   const [error, setError] = useState('');
 
   const closed = !caseItem.is_open;
@@ -30,11 +30,11 @@ export function CasePlanPanel({ propertyId, caseItem, aiMode }: Props) {
     }
   };
 
-  const toggle = async (stepId: number, done: boolean) => {
+  const toggle = async (stepId: string, completed: boolean) => {
     setSavingStep(stepId);
     setError('');
     try {
-      setPlan(await api.updateStep(stepId, done));
+      setPlan(await api.updateStep(propertyId, stepId, completed ? 'completed' : 'pending'));
     } catch (e) {
       setError(errorMessage(e));
     } finally {
@@ -95,13 +95,17 @@ export function CasePlanPanel({ propertyId, caseItem, aiMode }: Props) {
               <span className="row small">
                 {step.ordinance && <span className="chip">Ord. {step.ordinance}</span>}
                 {step.evidence_ids.slice(0, 6).map((id) => <span key={id} className="chip">E{id}</span>)}
-                {step.done_at && <span className="muted">done {formatTime(step.done_at)}</span>}
+                {step.completed_at && <span className="muted">completed {formatTime(step.completed_at)}</span>}
               </span>
             </div>
           </li>
         ))}
       </ol>
-      <span className="small muted">Saved {formatTime(plan.created_at)}; shown again whenever this property is opened.</span>
+      <span className="small muted">
+        Saved {formatTime(plan.created_at)}. {plan.storage === 'account'
+          ? 'Kept in your account: the same steps and ticks appear on any device you sign in from.'
+          : 'Kept on this computer only (guest). Sign in to keep these steps and ticks in your account.'}
+      </span>
       {error && <Notice tone="error">{error}</Notice>}
     </div>
   );

@@ -38,10 +38,10 @@ export function TasksPage({ propertyId, onFilter, onOpenProperty }: Props) {
     load();
   }, [load]);
 
-  const byId = new Map(properties.map((p) => [p.id, p]));
   const replace = (t: Task) => setTasks((prev) => prev?.map((x) => (x.id === t.id ? t : x)) ?? null);
   const order: Record<string, number> = { open: 0, in_progress: 1, verified: 2, dismissed: 3 };
-  const sorted = [...(tasks ?? [])].sort((a, b) => order[a.status] - order[b.status] || b.id - a.id);
+  const sorted = [...(tasks ?? [])].sort((a, b) => order[a.status] - order[b.status]
+    || b.created_at.localeCompare(a.created_at));
 
   return (
     <div className="stack-lg">
@@ -63,7 +63,8 @@ export function TasksPage({ propertyId, onFilter, onOpenProperty }: Props) {
       {tasks === null && !error && <Empty>Loading tasks…</Empty>}
       {tasks?.length === 0 && <Empty>No tasks yet. Run an investigation from the Properties page.</Empty>}
       {sorted.map((t) => (
-        <TaskCard key={`${t.id}:${t.updated_at}`} task={t} property={byId.get(t.property_id)} onUpdated={replace} onOpenProperty={onOpenProperty} />
+        <TaskCard key={`${t.id}:${t.updated_at}`} task={t} onUpdated={replace} onOpenProperty={onOpenProperty}
+                  property={properties.find((p) => p.id === t.property_id || p.hcad === t.property_hcad)} />
       ))}
     </div>
   );
@@ -104,7 +105,7 @@ function TaskCard({ task, property, onUpdated, onOpenProperty }: {
     <div className="glass-panel panel stack" style={{ borderLeft: `4px solid ${closed ? '#475569' : task.priority === 'high' ? '#F59E0B' : '#3B82F6'}` }}>
       <div className="row-between">
         <div className="row">
-          <span className="chip">task #{task.id}</span>
+          <span className="chip">{task.storage === 'account' ? `task ${task.id.slice(0, 8)}` : `task #${task.id}`}</span>
           <span className="badge badge-outline">{ACTION_LABELS[task.action_type] ?? task.action_type}</span>
           <PriorityBadge priority={task.priority} />
           <StatusBadge status={task.status} />
@@ -159,7 +160,10 @@ function TaskCard({ task, property, onUpdated, onOpenProperty }: {
         </div>
       )}
       <span className="small muted">Created {formatTime(task.created_at)} · updated {formatTime(task.updated_at)}
-        {task.last_run_id ? ` · last touched by run #${task.last_run_id}` : ''}</span>
+        {task.last_run_id ? ` · last touched by run #${task.last_run_id}` : ''}
+        {task.storage === 'account'
+          ? ' · saved in your account, so the status follows you to any device'
+          : ' · saved on this computer only (guest); sign in to keep it in your account'}</span>
     </div>
   );
 }

@@ -156,7 +156,7 @@ export default function App() {
         )}
         {route.view === 'properties' && <PropertiesPage isSaved={isSaved} onToggleSave={toggleSave} onOpen={openProperty} />}
         {route.view === 'investigation' && (
-          <InvestigationPage key={route.propertyId} propertyId={route.propertyId} runId={route.runId}
+          <InvestigationPage key={`${route.propertyId}:${user?.id ?? 'guest'}`} propertyId={route.propertyId} runId={route.runId}
                              aiMode={health?.model.mode ?? null} isSaved={isSaved}
                              onToggleSave={toggleSave} onSelectRun={(runId) => openProperty(route.propertyId, runId)}
                              onOpenTasks={(propertyId) => navigate({ view: 'tasks', propertyId })} />

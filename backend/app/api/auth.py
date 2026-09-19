@@ -33,6 +33,11 @@ def current_user(request: Request) -> dict:
     return user
 
 
+def optional_user(request: Request) -> dict | None:
+    """None for guests (no token); 401 if a token was sent but is no longer valid."""
+    return current_user(request) if _token(request) else None
+
+
 def _normalize(email: str) -> str:
     return email.strip().lower()
 

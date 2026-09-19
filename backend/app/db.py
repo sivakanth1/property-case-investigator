@@ -58,7 +58,21 @@ def init_engine(url: str) -> Engine:
     from . import models  # noqa: F401  (registers tables)
 
     Base.metadata.create_all(_engine)
+    _add_missing_columns(_engine)
     return _engine
+
+
+def _add_missing_columns(engine: Engine) -> None:
+    """Tiny forward migration: create_all does not add columns to tables that already exist."""
+    if engine.dialect.name != "sqlite":
+        return
+    added = {"investigation_runs": {"user_id": "VARCHAR(64)"}}
+    with engine.begin() as conn:
+        for table, columns in added.items():
+            existing = {row[1] for row in conn.exec_driver_sql(f"PRAGMA table_info({table})")}
+            for name, ddl in columns.items():
+                if name not in existing:
+                    conn.exec_driver_sql(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}")
 
 
 def dispose_engine() -> None:

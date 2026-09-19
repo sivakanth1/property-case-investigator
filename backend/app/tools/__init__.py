@@ -20,6 +20,8 @@ MAX_RESULT_CHARS = 5000
 class ToolContext:
     run_id: int
     property_id: int
+    hcad: str = ""
+    store: object = None  # task store the run reads memory from and commits to
 
 
 @dataclass(frozen=True)

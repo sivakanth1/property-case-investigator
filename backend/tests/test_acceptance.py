@@ -8,9 +8,9 @@ from app.agents.commit_gate import commit_run
 from app.agents.runner import RunConflict, create_run, execute_run, mark_interrupted_runs, resume_run
 from app.data.houston_client import HoustonClient, SourceUnavailable
 from app.data.repository import (
-    DataBlocker, coverage, grouped_cases, import_property, list_properties, make_task_key, refresh_property,
-    search_candidates,
+    DataBlocker, coverage, grouped_cases, import_property, list_properties, refresh_property, search_candidates,
 )
+from app.data.task_store import LocalTaskStore, make_task_key
 from app.db import dispose_engine, init_engine, session_scope
 from app.models import Feedback, InvestigationRun, Property, SourceRecord, Task, TaskProposal
 from app.tools import ToolContext, execute_tool
@@ -134,11 +134,10 @@ def test_invalid_or_cross_property_evidence_cannot_create_committed_task(fixture
     ]
     with session_scope() as s:
         for action, cases, ev in bad:
-            s.add(TaskProposal(run_id=run_id, property_id=a, task_key=make_task_key(a, action, cases), action_type=action,
+            s.add(TaskProposal(run_id=run_id, property_id=a, task_key=make_task_key(TEST_HCAD_A, action, cases), action_type=action,
                                case_ids_json=json.dumps(cases), title="Forced proposal", reason="Bypassing the tool layer.",
                                priority="low", evidence_ids_json=json.dumps(ev), status="approved"))
-    with session_scope() as s:
-        outcomes = commit_run(s, run_id)
+    outcomes = commit_run(run_id, LocalTaskStore(), TEST_HCAD_A)
     assert [o["outcome"] for o in outcomes] == ["rejected"] * 4
     assert _count(Task) == 0
 

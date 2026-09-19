@@ -9,46 +9,7 @@ from app.auth.passwords import hash_password, verify_password
 from app.data.supabase_admin import EmailTaken, SupabaseAdmin, SupabaseError
 from app.db import dispose_engine, init_engine
 
-
-class FakeSupabase:
-    """In-memory stand-in for the Supabase profiles / saved_properties tables (TEST FIXTURE)."""
-
-    def __init__(self):
-        self.profiles: dict[str, dict] = {}
-        self.saved: list[dict] = []
-
-    def get_profile_by_email(self, email):
-        return next((dict(p) for p in self.profiles.values() if p["email"] == email), None)
-
-    def create_profile(self, email, full_name, company, password_hash):
-        if self.get_profile_by_email(email):
-            raise EmailTaken("taken")
-        pid = f"user-{len(self.profiles) + 1}"
-        self.profiles[pid] = {"id": pid, "email": email, "full_name": full_name, "company": company,
-                              "password_hash": password_hash}
-        return dict(self.profiles[pid])
-
-    def set_password(self, profile_id, password_hash, full_name, company):
-        p = self.profiles[profile_id]
-        p["password_hash"] = password_hash
-        p["full_name"] = full_name or p["full_name"]
-        return dict(p)
-
-    def list_saved(self, user_id):
-        return [s for s in self.saved if s["user_id"] == user_id]
-
-    def save_property(self, user_id, hcad, address, zip_code):
-        self.saved = [s for s in self.saved if not (s["user_id"] == user_id and s["hcad"] == hcad)]
-        row = {"id": str(len(self.saved) + 1), "user_id": user_id, "hcad": hcad, "address": address, "zip": zip_code,
-               "created_at": "2026-09-19T00:00:00Z"}
-        self.saved.append(row)
-        return row
-
-    def delete_saved(self, user_id, hcad):
-        self.saved = [s for s in self.saved if not (s["user_id"] == user_id and s["hcad"] == hcad)]
-
-    def close(self):
-        pass
+from conftest import FakeSupabase
 
 
 @pytest.fixture

@@ -5,6 +5,13 @@ limits. Supabase stores the account rows:
 
 - `public.profiles`: `id`, `email` (unique, lowercase), `full_name`, `company`, `password_hash`.
 - `public.saved_properties`: `(user_id, hcad)` unique; the properties each account tracks.
+- `public.case_plans` / `public.case_plan_steps`: the AI resolution checklist per case, each step carrying
+  `status` = `pending` or `completed`.
+- `public.investigation_tasks` / `public.investigation_task_feedback`: verification tasks from investigations, with
+  their status (`open`, `in_progress`, `verified`, `dismissed`) and the feedback notes behind each change.
+
+Everything keyed by `user_id`, so signing in on another device shows the same lists in the same state. Guests (no
+account) keep these in the backend's local SQLite file instead.
 
 How passwords are protected:
 

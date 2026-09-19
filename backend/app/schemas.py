@@ -103,7 +103,7 @@ class PlanRequest(Strict):
 
 
 class StepUpdate(Strict):
-    done: bool
+    status: Literal["pending", "completed"]
 
 
 class ProposalDecision(Strict):

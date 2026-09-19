@@ -5,7 +5,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..config import ACTION_TYPES, FINDING_TYPES, PRIORITIES
-from ..data.repository import evidence_records, loads, make_task_key, task_view
+from ..data.repository import evidence_records, loads
+from ..data.task_store import LocalTaskStore, TaskPayload
 from ..models import Finding, SourceRecord, Task, TaskProposal
 from ..schemas import ProposeFindingArgs, ProposeTaskArgs
 from .errors import ToolError
@@ -122,16 +123,6 @@ def propose_finding(s: Session, ctx, args: ProposeFindingArgs) -> dict:
     return {"proposal_id": f"F-{finding.id}", "status": "draft"}
 
 
-def overlapping_tasks(s: Session, property_id: int, action_type: str, case_ids: list[str]) -> list[Task]:
-    wanted = set(case_ids)
-    out = []
-    for t in s.scalars(select(Task).where(Task.property_id == property_id, Task.action_type == action_type)):
-        existing = set(loads(t.case_ids_json, []))
-        if existing != wanted and existing & wanted:
-            out.append(t)
-    return out
-
-
 def propose_task(s: Session, ctx, args: ProposeTaskArgs) -> dict:
     case_ids = sorted({c.strip() for c in args.case_ids})
     issues = validate_task_payload(s, ctx.property_id, action_type=args.action_type, case_ids=case_ids,
@@ -139,7 +130,12 @@ def propose_task(s: Session, ctx, args: ProposeTaskArgs) -> dict:
                                    evidence_ids=args.evidence_ids)
     if issues:
         raise ToolError("Task rejected: " + " ".join(issues))
-    key = make_task_key(ctx.property_id, args.action_type, case_ids)
+    store = ctx.store or LocalTaskStore()
+    payload = TaskPayload(ctx.property_id, ctx.hcad, args.action_type, case_ids, args.title, args.reason,
+                          args.priority, args.evidence_ids)
+    key = payload.task_key
+    existing = store.find_by_key(key)          # store reads first: no write lock is held during them
+    overlaps = store.overlapping(payload)
     proposal = _run_proposal(s, TaskProposal, ctx.run_id, args.revises_proposal_id, "T")
     if proposal is None:
         proposal = s.scalars(select(TaskProposal).where(TaskProposal.run_id == ctx.run_id,
@@ -154,14 +150,12 @@ def propose_task(s: Session, ctx, args: ProposeTaskArgs) -> dict:
     proposal.status, proposal.issues_json = "draft", "[]"
     s.flush()
 
-    existing = s.scalars(select(Task).where(Task.task_key == key)).first()
-    overlaps = overlapping_tasks(s, ctx.property_id, args.action_type, case_ids)
     result = {"proposal_id": f"T-{proposal.id}", "task_key": key, "status": "draft"}
     if existing:
-        result["existing_task"] = {"task_id": existing.id, "status": existing.status}
+        result["existing_task"] = {"task_id": existing["id"], "status": existing["status"]}
         result["note"] = "Same scope as an existing task: committing only refreshes its evidence; status is preserved."
     if overlaps:
-        result["overlapping_tasks"] = [{"task_id": t.id, "case_ids": task_view(s, t)["case_ids"], "status": t.status}
+        result["overlapping_tasks"] = [{"task_id": t["id"], "case_ids": t["case_ids"], "status": t["status"]}
                                        for t in overlaps]
         result["note"] = "Overlaps existing work; this proposal will be held for human review instead of duplicating."
     return result

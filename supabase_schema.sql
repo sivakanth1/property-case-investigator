@@ -40,6 +40,72 @@ CREATE TABLE IF NOT EXISTS public.saved_properties (
 -- Needed for "save to portfolio" upserts (one row per account and parcel).
 CREATE UNIQUE INDEX IF NOT EXISTS saved_properties_user_hcad_idx ON public.saved_properties (user_id, hcad);
 
+-- AI resolution checklists per account: one active plan per (account, property, case); each step is a to-do
+-- whose status the user toggles between 'pending' and 'completed'. Shown the same on any device.
+CREATE TABLE IF NOT EXISTS public.case_plans (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id TEXT NOT NULL,
+    hcad TEXT NOT NULL,
+    case_id TEXT NOT NULL,
+    address TEXT,
+    status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'superseded')),
+    mode TEXT NOT NULL,
+    model TEXT,
+    summary TEXT NOT NULL,
+    source_status TEXT,
+    created_at TIMESTAMPTZ DEFAULT now() NOT NULL,
+    updated_at TIMESTAMPTZ DEFAULT now() NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS case_plans_one_active_idx
+    ON public.case_plans (user_id, hcad, case_id) WHERE status = 'active';
+CREATE INDEX IF NOT EXISTS case_plans_case_idx ON public.case_plans (hcad, case_id);
+
+CREATE TABLE IF NOT EXISTS public.case_plan_steps (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    plan_id UUID NOT NULL REFERENCES public.case_plans (id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL,
+    position INT NOT NULL,
+    title TEXT NOT NULL,
+    detail TEXT NOT NULL,
+    ordinance TEXT,
+    evidence_refs JSONB NOT NULL DEFAULT '[]'::jsonb,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'completed')),
+    completed_at TIMESTAMPTZ,
+    updated_at TIMESTAMPTZ DEFAULT now() NOT NULL
+);
+CREATE INDEX IF NOT EXISTS case_plan_steps_plan_idx ON public.case_plan_steps (plan_id);
+
+-- Verification tasks from investigations, per account: one row per (account, property, task_key). Status and
+-- feedback follow the account to any device; a repeat investigation only refreshes evidence.
+CREATE TABLE IF NOT EXISTS public.investigation_tasks (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id TEXT NOT NULL,
+    property_hcad TEXT NOT NULL,
+    task_key TEXT NOT NULL,
+    action_type TEXT NOT NULL,
+    case_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+    title TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'in_progress', 'verified', 'dismissed')),
+    priority TEXT NOT NULL,
+    evidence_refs JSONB NOT NULL DEFAULT '[]'::jsonb,
+    last_run_id TEXT,
+    created_at TIMESTAMPTZ DEFAULT now() NOT NULL,
+    updated_at TIMESTAMPTZ DEFAULT now() NOT NULL,
+    UNIQUE (user_id, task_key)
+);
+CREATE INDEX IF NOT EXISTS investigation_tasks_property_idx ON public.investigation_tasks (user_id, property_hcad);
+
+CREATE TABLE IF NOT EXISTS public.investigation_task_feedback (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    task_id UUID NOT NULL REFERENCES public.investigation_tasks (id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL,
+    action TEXT NOT NULL,
+    note TEXT,
+    created_at TIMESTAMPTZ DEFAULT now() NOT NULL
+);
+CREATE INDEX IF NOT EXISTS investigation_task_feedback_task_idx ON public.investigation_task_feedback (task_id);
+
 -- 2. Give id columns a generated default that matches their existing type (uuid or text) --------
 DO $$
 DECLARE
@@ -92,8 +158,20 @@ DROP POLICY IF EXISTS "profiles_update_own" ON public.profiles;
 DROP POLICY IF EXISTS "profiles_insert_own" ON public.profiles;
 DROP POLICY IF EXISTS "saved_properties_own" ON public.saved_properties;
 
+ALTER TABLE public.case_plans ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.case_plan_steps ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.investigation_tasks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.investigation_task_feedback ENABLE ROW LEVEL SECURITY;
+
 REVOKE ALL ON public.profiles FROM anon, authenticated;
 REVOKE ALL ON public.saved_properties FROM anon, authenticated;
+REVOKE ALL ON public.case_plans FROM anon, authenticated;
+REVOKE ALL ON public.case_plan_steps FROM anon, authenticated;
+REVOKE ALL ON public.investigation_tasks FROM anon, authenticated;
+REVOKE ALL ON public.investigation_task_feedback FROM anon, authenticated;
+
+-- Make PostgREST pick up the new tables and columns immediately.
+NOTIFY pgrst, 'reload schema';
 
 -- 5. Legacy prototype tables: locked the same way (data left in place) ------------------------------
 DO $$

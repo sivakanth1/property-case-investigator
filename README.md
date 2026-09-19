@@ -20,7 +20,8 @@ React (Vite, :5173) ──/api proxy──► FastAPI (:8000) ──► single i
                                            run_events, findings, task_proposals, tasks, feedback, case_plans,
                                            case_plan_steps, auth_sessions
 Houston CKAN datastore_search (HCAD filters) ──► cached source_records with retrieval date + completeness
-Supabase (via backend service-role key only): profiles (email, name, scrypt password hash) and saved portfolio
+Supabase (via backend service-role key only, per account): profiles (email, name, scrypt password hash),
+saved portfolio, case_plans + case_plan_steps (resolution checklists), investigation_tasks + feedback
 ```
 
 - Every finding and task cites source rows (evidence ids → resource id + row id + original fields).
@@ -83,6 +84,9 @@ avoid starting several AI actions at the same time.
 - **Search** on the Properties page queries the live City of Houston CKAN API (grouped by HCAD, never merged).
   Opening a result fetches every record for that parcel. Opening a property again re-fetches it when the cached copy
   is older than `LIVE_REFRESH_MINUTES` (default 30); if the API is down the cached real records are shown and labeled.
+- **Saved per account:** when signed in, resolution checklists and investigation tasks (with their status and
+  feedback) are stored in Supabase under your account, so any device you sign in from shows the same lists in the same
+  state. Guests keep them in the backend's SQLite file on that computer.
 - **Resolution steps:** each open case (not marked `CLOSED` in the source) has a *Get AI resolution steps* button;
   closed cases show it disabled. The first click asks Featherless for a checklist grounded in the case's violation
   categories, descriptions and ordinance numbers. The backend then validates it: the first step must be a

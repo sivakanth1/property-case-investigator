@@ -3,22 +3,26 @@ from sqlalchemy import select
 
 from ..agents.runner import RunConflict, create_run, resume_run
 from ..config import get_settings
-from ..data.repository import (
-    DataBlocker, coverage, finding_view, get_property, loads, proposal_view, task_view,
-)
+from ..data.repository import DataBlocker, coverage, finding_view, get_property, loads, proposal_view
+from ..data.supabase_admin import SupabaseError
+from .auth import optional_user
+from .tasks import store_for
 from ..db import iso, session_scope
-from ..models import Finding, InvestigationRun, RunEvent, Task, TaskProposal
+from ..models import Finding, InvestigationRun, RunEvent, TaskProposal
 from ..schemas import InvestigationCreate
 from .errors import api_error, not_found
 
 router = APIRouter(prefix="/api/investigations", tags=["investigations"])
 
 
-def run_view(s, run: InvestigationRun) -> dict:
+def run_view(s, run: InvestigationRun, store) -> dict:
     prop = get_property(s, run.property_id)
     proposals = list(s.scalars(select(TaskProposal).where(TaskProposal.run_id == run.id).order_by(TaskProposal.id)))
     task_ids = sorted({p.task_id for p in proposals if p.task_id})
-    tasks = [task_view(s, t) for t in s.scalars(select(Task).where(Task.id.in_(task_ids)))] if task_ids else []
+    try:
+        tasks = [t for t in (store.get_task(i) for i in task_ids) if t]
+    except SupabaseError:  # the run is still readable without its committed tasks
+        tasks = []
     checkpoint = loads(run.checkpoint_json, {})
     settings = get_settings()
     return {
@@ -42,7 +46,7 @@ def run_view(s, run: InvestigationRun) -> dict:
 @router.post("", status_code=202)
 def start(body: InvestigationCreate, request: Request):
     try:
-        result = create_run(body.property_id)
+        result = create_run(body.property_id, user_id=(optional_user(request) or {}).get("id"))
     except LookupError:
         raise not_found("Property")
     except DataBlocker as exc:
@@ -64,12 +68,12 @@ def list_runs(property_id: int | None = Query(default=None)):
 
 
 @router.get("/{run_id}")
-def get_run(run_id: int):
+def get_run(run_id: int, request: Request):
     with session_scope() as s:
         run = s.get(InvestigationRun, run_id)
         if run is None:
             raise not_found("Investigation")
-        return run_view(s, run)
+        return run_view(s, run, store_for(request))
 
 
 @router.post("/{run_id}/resume", status_code=202)

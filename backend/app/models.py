@@ -60,6 +60,7 @@ class InvestigationRun(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     property_id: Mapped[int] = mapped_column(ForeignKey("properties.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[str | None] = mapped_column(String(64), index=True)  # account that started it; None = guest
     status: Mapped[str] = mapped_column(String(16), index=True)
     mode: Mapped[str] = mapped_column(String(32))  # live_model | deterministic_demo
     model: Mapped[str | None] = mapped_column(String(200))
@@ -111,7 +112,7 @@ class TaskProposal(Base):
     evidence_ids_json: Mapped[str] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(16), default="draft")
     issues_json: Mapped[str] = mapped_column(Text, default="[]")
-    task_id: Mapped[int | None] = mapped_column(ForeignKey("tasks.id", ondelete="SET NULL"))
+    task_id: Mapped[str | None] = mapped_column(String(64))  # local task id or Supabase uuid, depending on the store
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, onupdate=utcnow)
 

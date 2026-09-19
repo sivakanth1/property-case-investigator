@@ -1,11 +1,12 @@
 from sqlalchemy.orm import Session
 
 from ..data.repository import property_memory
+from ..data.task_store import LocalTaskStore
 from ..schemas import GetPropertyMemoryArgs
 
 
 def get_property_memory(s: Session, ctx, args: GetPropertyMemoryArgs) -> dict:
-    memory = property_memory(s, ctx.property_id, exclude_run_id=ctx.run_id)
+    memory = property_memory(s, ctx.property_id, ctx.hcad, ctx.store or LocalTaskStore(), exclude_run_id=ctx.run_id)
     tasks = [{
         "task_id": t["id"], "task_key": t["task_key"], "action_type": t["action_type"], "case_ids": t["case_ids"],
         "title": t["title"], "status": t["status"], "priority": t["priority"],

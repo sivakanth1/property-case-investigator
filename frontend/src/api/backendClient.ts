@@ -123,29 +123,32 @@ export interface CaseGroup {
   plan: CasePlan | null;
 }
 
+export type StepStatus = 'pending' | 'completed';
+
 export interface PlanStep {
-  id: number;
+  id: string;
   position: number;
   title: string;
   detail: string;
   ordinance: string | null;
   evidence_ids: number[];
+  status: StepStatus;
   done: boolean;
-  done_at: string | null;
+  completed_at: string | null;
 }
 
 export interface CasePlan {
-  id: number;
-  property_id: number;
+  id: string;
   case_id: string;
   status: string;
   mode: RunMode;
   model: string | null;
   summary: string;
   source_status: string | null;
-  evidence_ids: number[];
   created_at: string;
   updated_at: string;
+  /** 'account' = saved in your account (any device); 'local' = saved on this computer (guest). */
+  storage: 'account' | 'local';
   progress: { done: number; total: number };
   steps: PlanStep[];
 }
@@ -155,14 +158,19 @@ export interface CasesResponse {
   coverage: Coverage;
   cases: CaseGroup[];
   category_recurrence: { category: string; distinct_cases: number; case_ids: string[] }[];
+  plans_storage: 'account' | 'local';
+  plans_error: string | null;
 }
 
-export interface FeedbackItem { id: number; action: string; note: string | null; created_at: string }
+export interface FeedbackItem { id: string; action: string; note: string | null; created_at: string }
 
 export interface Task {
-  id: number;
-  property_id: number;
+  id: string;
+  property_id: number | null;
+  property_hcad: string | null;
   task_key: string;
+  /** 'account' = saved in your account (any device); 'local' = saved on this computer (guest). */
+  storage: 'account' | 'local';
   action_type: string;
   case_ids: string[];
   title: string;
@@ -201,7 +209,7 @@ export interface Proposal {
   evidence_ids: number[];
   status: string;
   issues: string[];
-  task_id: number | null;
+  task_id: string | null;
 }
 
 export interface RunEvent { id: number; type: string; summary: string; created_at: string }
@@ -315,15 +323,16 @@ export const api = {
   investigation: (id: number) => request<Investigation>(`/api/investigations/${id}`),
   resume: (id: number) => post<{ run_id: number; status: RunStatus }>(`/api/investigations/${id}/resume`),
   tasks: (propertyId?: number) => request<Task[]>(`/api/tasks${q({ property_id: propertyId })}`),
-  updateTask: (id: number, body: { status?: TaskStatus; note?: string }) =>
-    request<Task>(`/api/tasks/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  updateTask: (id: string, body: { status?: TaskStatus; note?: string }) =>
+    request<Task>(`/api/tasks/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(body) }),
   approveProposal: (id: number, note?: string) =>
     post<{ outcome: { outcome: string; issues?: string[] } }>(`/api/proposals/${id}/approve`, note ? { note } : {}),
   rejectProposal: (id: number, note?: string) => post(`/api/proposals/${id}/reject`, note ? { note } : {}),
   generatePlan: (propertyId: number, caseId: string, regenerate = false) =>
     post<CasePlan>(`/api/properties/${propertyId}/cases/${encodeURIComponent(caseId)}/plan`, { regenerate }),
-  updateStep: (stepId: number, done: boolean) =>
-    request<CasePlan>(`/api/plan-steps/${stepId}`, { method: 'PATCH', body: JSON.stringify({ done }) }),
+  updateStep: (propertyId: number, stepId: string, status: StepStatus) =>
+    request<CasePlan>(`/api/properties/${propertyId}/plan-steps/${encodeURIComponent(stepId)}`,
+      { method: 'PATCH', body: JSON.stringify({ status }) }),
   signUp: (body: { email: string; password: string; full_name?: string; company?: string }) =>
     post<{ token: string; user: AccountUser }>('/api/auth/signup', body),
   signIn: (email: string, password: string) =>

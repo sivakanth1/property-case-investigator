@@ -4,7 +4,7 @@ import uuid
 from typing import Callable
 
 from ..config import Settings
-from ..data.repository import make_task_key
+from ..data.task_store import make_task_key
 from ..tools import TOOLS, ToolContext, bounded_json, execute_tool, openai_tool_specs, tool_parameters
 from .llm import (
     ModelError, classify_error, complete, extract_json_object, first_message, is_tool_rejection, strip_reasoning,
@@ -291,7 +291,7 @@ class DeterministicInvestigator:
         elif name == "get_property_cases":
             det["cases"] = r
             det["focus_case"] = self._focus_case(r)
-            det["queue"] = self._build_queue(ctx.property_id, det)
+            det["queue"] = self._build_queue(ctx, det)
             if not det["focus_case"]:
                 det["step"] += 1  # nothing to detail; skip straight to proposals
         elif name in ("propose_task", "propose_finding"):
@@ -312,7 +312,8 @@ class DeterministicInvestigator:
                                               c["created_date"] or ""), reverse=True)
         return ranked[0]["case_id"]
 
-    def _build_queue(self, pid: int, det: dict) -> list[dict]:
+    def _build_queue(self, ctx: ToolContext, det: dict) -> list[dict]:
+        pid = ctx.property_id
         r = det["cases"]
         cases = [c for c in (r or {}).get("cases", []) if c["case_id"]]
         if not cases:
@@ -326,7 +327,7 @@ class DeterministicInvestigator:
         queue: list[dict] = []
 
         def add_task(action: str, case_ids: list[str], title: str, reason: str, priority: str, evidence: list[int]):
-            key = make_task_key(pid, action, case_ids)
+            key = make_task_key(ctx.hcad, action, case_ids)
             prior = memory.get(key)
             if prior and prior["status"] in ("verified", "dismissed"):
                 det["skipped"].append(f"{action} for case(s) {', '.join(case_ids)} (task #{prior['id']} is {prior['status']})")

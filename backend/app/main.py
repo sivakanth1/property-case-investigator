@@ -40,7 +40,7 @@ async def lifespan(app: FastAPI):
                           if settings.accounts_enabled else None)
     if app.state.supabase is None:
         log.info("Accounts disabled: SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY not set in backend/.env")
-    app.state.run_manager = RunManager()
+    app.state.run_manager = RunManager(admin=app.state.supabase)
     app.state.run_manager.start()
     yield
     app.state.run_manager.stop()

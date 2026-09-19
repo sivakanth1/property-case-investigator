@@ -179,6 +179,7 @@ export function InvestigationPage({ propertyId, runId, aiMode, isSaved, onToggle
         {error && <Notice tone="error">{error}</Notice>}
       </div>
 
+      {cases.plans_error && <Notice tone="warn">{cases.plans_error}</Notice>}
       <OpenCases propertyId={propertyId} cases={cases.cases.filter((c) => c.is_open)} aiMode={aiMode} />
 
       <div className="grid-2">

@@ -30,10 +30,6 @@ def loads(value: str | None, default):
         return default
 
 
-def make_task_key(property_id: int, action_type: str, case_ids: list[str]) -> str:
-    return f"p{property_id}:{action_type}:{'|'.join(sorted({c.strip() for c in case_ids}))}"
-
-
 def source_url(resource_id: str, filters: dict) -> str:
     return str(httpx.URL(CKAN_API_BASE + "datastore_search", params={"resource_id": resource_id, "filters": json.dumps(filters)}))
 
@@ -370,8 +366,9 @@ def proposal_view(p: TaskProposal) -> dict:
             "issues": loads(p.issues_json, []), "task_id": p.task_id}
 
 
-def property_memory(s: Session, property_id: int, exclude_run_id: int | None = None) -> dict:
-    tasks = [task_view(s, t) for t in list_tasks(s, property_id)]
+def property_memory(s: Session, property_id: int, hcad: str, store, exclude_run_id: int | None = None) -> dict:
+    """Previous tasks (from the caller's store) and the last run's approved findings."""
+    tasks = store.list_tasks(property_id=property_id, hcad=hcad)
     prev_run = s.scalars(select(InvestigationRun).where(
         InvestigationRun.property_id == property_id, InvestigationRun.status.in_(("completed", "partial")),
         InvestigationRun.id != (exclude_run_id or -1)).order_by(InvestigationRun.id.desc())).first()

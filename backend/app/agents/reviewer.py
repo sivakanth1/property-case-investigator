@@ -44,7 +44,7 @@ def deterministic_issues(s: Session, run_id: int) -> list[dict]:
     return issues
 
 
-def review_packet(s: Session, run_id: int, property_id: int) -> dict | None:
+def review_packet(s: Session, run_id: int, property_id: int, hcad: str, store) -> dict | None:
     tasks, findings = draft_proposals(s, run_id)
     if not tasks and not findings:
         return None
@@ -55,7 +55,7 @@ def review_packet(s: Session, run_id: int, property_id: int) -> dict | None:
         evidence.append({"evidence_id": rec.id, "case_id": rec.case_id, "category": f.get("category"),
                          "short_description": f.get("short_description"), "source_status": f.get("source_status"),
                          "created_date": f.get("created_date"), "notes_untrusted": (f.get("notes") or "")[:200]})
-    memory = property_memory(s, property_id, exclude_run_id=run_id)
+    memory = property_memory(s, property_id, hcad, store, exclude_run_id=run_id)
     return {
         "proposals": [{"proposal_id": f"T-{p.id}", "kind": "task", "action_type": p.action_type,
                        "case_ids": loads(p.case_ids_json, []), "title": p.title, "reason": p.reason,
@@ -118,11 +118,11 @@ def apply_review(s: Session, run_id: int, issues: list[dict], final: bool) -> di
     return counts
 
 
-def existing_task_conflicts(s: Session, run_id: int) -> list[str]:
+def existing_task_conflicts(s: Session, run_id: int, store) -> list[str]:
     """Informational: same-scope proposals for tasks a person already closed only refresh evidence."""
     notes = []
     for p in s.scalars(select(TaskProposal).where(TaskProposal.run_id == run_id)):
-        t = s.scalars(select(Task).where(Task.task_key == p.task_key)).first()
-        if t and t.status in ("verified", "dismissed"):
-            notes.append(f"T-{p.id} matches task #{t.id} ({t.status}); status will be preserved")
+        t = store.find_by_key(p.task_key)
+        if t and t["status"] in ("verified", "dismissed"):
+            notes.append(f"T-{p.id} matches task {t['id']} ({t['status']}); status will be preserved")
     return notes

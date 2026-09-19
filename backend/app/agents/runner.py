@@ -10,6 +10,7 @@ from sqlalchemy.exc import IntegrityError
 
 from ..config import RUN_ACTIVE_STATUSES, Settings, get_settings
 from ..data.repository import DataBlocker, active_run, coverage, loads, property_memory
+from ..data.task_store import TaskStore, task_store_for
 from ..db import session_scope, utcnow
 from ..models import Finding, InvestigationRun, Property, RunEvent, SourceRecord, TaskProposal
 from ..tools import ToolContext
@@ -32,7 +33,7 @@ def emit(run_id: int, event_type: str, summary: str) -> None:
         s.add(RunEvent(run_id=run_id, event_type=event_type, summary=summary[:1000]))
 
 
-def create_run(property_id: int) -> dict:
+def create_run(property_id: int, user_id: str | None = None) -> dict:
     settings = get_settings()
     try:
         with session_scope() as s:
@@ -46,7 +47,7 @@ def create_run(property_id: int) -> dict:
             if current:
                 raise RunConflict(f"Run #{current.id} is already {current.status} for this property.")
             live = settings.live_model_enabled
-            run = InvestigationRun(property_id=property_id, status="queued",
+            run = InvestigationRun(property_id=property_id, user_id=user_id, status="queued",
                                    mode="live_model" if live else "deterministic_demo",
                                    model=settings.llm_model if live else None, checkpoint_json="{}")
             s.add(run)
@@ -92,9 +93,9 @@ def _set_status(run_id: int, status: str) -> None:
         s.get(InvestigationRun, run_id).status = status
 
 
-def _intro(s, prop: Property) -> str:
+def _intro(s, prop: Property, store: TaskStore) -> str:
     cov = coverage(s, prop)
-    memory = property_memory(s, prop.id)
+    memory = property_memory(s, prop.id, prop.hcad, store)
     lines = []
     for t in memory["tasks"][:10]:
         latest = t["feedback"][0]["note"] if t["feedback"] and t["feedback"][0]["note"] else None
@@ -108,13 +109,13 @@ def _intro(s, prop: Property) -> str:
 
 
 def _review(run_id: int, property_id: int, investigator, client, settings: Settings, ctx: ToolContext,
-            state: dict, deadline: float, save) -> None:
+            state: dict, deadline: float, save, store: TaskStore) -> None:
     emit(run_id, "review_started", "Reviewing draft proposals.")
     while True:
         with session_scope() as s:
             issues = deterministic_issues(s, run_id)
-            packet = review_packet(s, run_id, property_id) if client else None
-            for note in existing_task_conflicts(s, run_id):
+            packet = review_packet(s, run_id, property_id, ctx.hcad, store) if client else None
+            for note in existing_task_conflicts(s, run_id, store):
                 emit(run_id, "review_note", note)
         if packet:
             remaining = deadline - time.monotonic()
@@ -188,7 +189,7 @@ def _proposal_count(run_id: int) -> int:
                (s.scalar(select(func.count()).select_from(Finding).where(Finding.run_id == run_id)) or 0)
 
 
-def execute_run(run_id: int, llm_factory: LlmFactory | None = None, hooks: dict | None = None) -> None:
+def execute_run(run_id: int, llm_factory: LlmFactory | None = None, hooks: dict | None = None, admin=None) -> None:
     settings = get_settings()
     with session_scope() as s:
         run = s.get(InvestigationRun, run_id)
@@ -196,8 +197,11 @@ def execute_run(run_id: int, llm_factory: LlmFactory | None = None, hooks: dict 
             return
         saved = loads(run.checkpoint_json, {})
         state = saved or new_state()
-        mode, property_id = run.mode, run.property_id
-        intro = _intro(s, s.get(Property, property_id))
+        mode, property_id, user_id = run.mode, run.property_id, run.user_id
+        prop = s.get(Property, property_id)
+        hcad = prop.hcad
+        store = task_store_for({"id": user_id} if user_id else None, admin)
+        intro = _intro(s, prop, store)
         run.status = "running"
         run.started_at = run.started_at or utcnow()
         s.add(RunEvent(run_id=run_id, event_type="run_resumed" if saved else "run_started",
@@ -207,7 +211,7 @@ def execute_run(run_id: int, llm_factory: LlmFactory | None = None, hooks: dict 
 
     started, prior = time.monotonic(), float(state.get("elapsed_s", 0.0))
     deadline = started + max(5.0, settings.run_time_budget_s - prior)
-    ctx = ToolContext(run_id=run_id, property_id=property_id)
+    ctx = ToolContext(run_id=run_id, property_id=property_id, hcad=hcad, store=store)
 
     def save(st: dict) -> None:
         st["elapsed_s"] = round(prior + time.monotonic() - started, 2)
@@ -236,12 +240,11 @@ def execute_run(run_id: int, llm_factory: LlmFactory | None = None, hooks: dict 
             save(state)
         if state["phase"] == "reviewing":
             _set_status(run_id, "reviewing")
-            _review(run_id, property_id, investigator, client, settings, ctx, state, deadline, save)
+            _review(run_id, property_id, investigator, client, settings, ctx, state, deadline, save, store)
             state["phase"] = "committing"
             save(state)
         if state["phase"] == "committing":
-            with session_scope() as s:
-                outcomes = commit_run(s, run_id)
+            outcomes = commit_run(run_id, store, hcad)
             ev("commit", _describe_commit(outcomes))
             state["phase"] = "done"
             save(state)
@@ -268,10 +271,11 @@ def execute_run(run_id: int, llm_factory: LlmFactory | None = None, hooks: dict 
 class RunManager:
     """Single in-process investigation worker."""
 
-    def __init__(self, llm_factory: LlmFactory | None = None):
+    def __init__(self, llm_factory: LlmFactory | None = None, admin=None):
         self._queue: queue.Queue = queue.Queue()
         self._thread: threading.Thread | None = None
         self._llm_factory = llm_factory
+        self.admin = admin
 
     def start(self) -> None:
         self._thread = threading.Thread(target=self._work, name="investigation-worker", daemon=True)
@@ -295,6 +299,6 @@ class RunManager:
             if run_id is None:
                 return
             try:
-                execute_run(run_id, self._llm_factory)
+                execute_run(run_id, self._llm_factory, admin=self.admin)
             except Exception:  # noqa: BLE001
                 log.exception("Worker failed on run %s", run_id)
