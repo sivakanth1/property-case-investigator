@@ -1,0 +1,24 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "backend",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": ["/c", "set DATABASE_URL=sqlite:///C:/Users/shiva/AppData/Local/Temp/claude/C--Projects-Antigravity-property-case-investor/4662ec37-f50e-4ae6-9d7f-f2101bc00b4f/scratchpad/e2e.db&& set SUPABASE_URL=http://127.0.0.1:8020&& set SUPABASE_SERVICE_ROLE_KEY=sb_secret_stub&& backend\\.venv\\Scripts\\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8010 --app-dir backend"],
+      "port": 8010
+    },
+    {
+      "name": "frontend",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": ["/c", "set PCI_BACKEND_URL=http://127.0.0.1:8010&& node frontend/node_modules/vite/bin/vite.js frontend --port 5180 --strictPort"],
+      "port": 5180
+    },
+    {
+      "name": "supabase-stub",
+      "runtimeExecutable": "backend/.venv/Scripts/python.exe",
+      "runtimeArgs": ["-m", "uvicorn", "supabase_stub:app", "--host", "127.0.0.1", "--port", "8020", "--app-dir",
+                      "C:/Users/shiva/AppData/Local/Temp/claude/C--Projects-Antigravity-property-case-investor/4662ec37-f50e-4ae6-9d7f-f2101bc00b4f/scratchpad"],
+      "port": 8020
+    }
+  ]
+}
